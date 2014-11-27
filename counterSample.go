@@ -2,59 +2,19 @@ package sflow
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 )
 
-type CounterSampleHeader struct {
+type CounterSample struct {
 	SequenceNum      uint32
 	SourceIdType     byte
 	SourceIdIndexVal uint32 // NOTE: this is 3 bytes in the datagram
-	CounterRecords   uint32
+	NumRecords       uint32
+	Records          []Record
 }
 
-type CounterRecordHeader struct {
-	DataFormat uint32
-	DataLength uint32
-}
-
-const (
-	TypeGenericIfaceCounter = 1
-	TypeEthernetCounter     = 2
-	TypeTokenRingCounter    = 3
-	TypeVgCounter           = 4
-	TypeVlanCounter         = 5
-	TypeProcessorCounter    = 1001
-	TypeHostCpuCounter      = 2003
-	TypeHostMemoryCounter   = 2004
-	TypeHostDiskCounter     = 2005
-	TypeHostNetCounter      = 2006
-
-	// Custom (Enterprise) types
-	TypeApplicationCounter = (1)<<12 + 1
-)
-
-type CounterSample struct {
-	Header  CounterSampleHeader
-	Records []Record
-}
-
-func (c CounterSample) String() string {
-	out := "\n"
-	out += "Counter sample\n==========\n"
-	for _, record := range c.Records {
-		out += fmt.Sprintf("%+v\n-------\n", record)
-	}
-
-	return out
-}
-
-func (s CounterSample) SampleType() int {
+func (s *CounterSample) SampleType() int {
 	return TypeCounterSample
-}
-
-func (s CounterSample) GetRecords() []Record {
-	return s.Records
 }
 
 func decodeCounterSample(r io.ReadSeeker) Sample {
