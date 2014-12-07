@@ -37,8 +37,16 @@ func decodeSample(r io.ReadSeeker) (Sample, error) {
 	switch format {
 	case TypeCounterSample:
 		return decodeCounterSample(r)
+
+	case TypeFlowSample:
+		return decodeFlowSample(r)
+
 	default:
-		r.Seek(int64(length), 1)
+		_, err = r.Seek(int64(length), 1)
+		if err != nil {
+			return nil, err
+		}
+
 		return nil, ErrUnknownSampleType
 	}
 
