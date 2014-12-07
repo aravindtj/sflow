@@ -43,6 +43,10 @@ func (s *FlowSample) SampleType() int {
 	return TypeFlowSample
 }
 
+func (s *FlowSample) GetRecords() []Record {
+	return s.Records
+}
+
 func decodeFlowSample(r io.ReadSeeker) (Sample, error) {
 	s := &FlowSample{}
 

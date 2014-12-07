@@ -19,6 +19,7 @@ var (
 
 type Sample interface {
 	SampleType() int
+	GetRecords() []Record
 }
 
 func decodeSample(r io.ReadSeeker) (Sample, error) {
