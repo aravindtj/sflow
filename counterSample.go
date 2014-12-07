@@ -2,7 +2,25 @@ package sflow
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
+)
+
+const (
+	TypeGenericInterfaceCountersRecord = 1
+	TypeEthernetCountersRecord         = 2
+	TypeTokenRingCountersRecord        = 3
+	TypeVgCountersRecord               = 4
+	TypeVlanCountersRecord             = 5
+
+	TypeProcessorCountersRecord  = 1001
+	TypeHostCpuCountersRecord    = 2003
+	TypeHostMemoryCountersRecord = 2004
+	TypeHostDiskCountersRecord   = 2005
+	TypeHostNetCountersRecord    = 2006
+
+	// Custom (Enterprise) types
+	TypeApplicationCountersRecord = (1)<<12 + 1
 )
 
 type CounterSample struct {
@@ -17,52 +35,126 @@ func (s *CounterSample) SampleType() int {
 	return TypeCounterSample
 }
 
-func decodeCounterSample(r io.ReadSeeker) Sample {
-	header := CounterSampleHeader{}
+func decodeCounterSample(r io.ReadSeeker) (Sample, error) {
+	s := &CounterSample{}
 
-	binary.Read(r, binary.BigEndian, &header.SequenceNum)
-	binary.Read(r, binary.BigEndian, &header.SourceIdType)
-	var srcIdType [3]byte
-	r.Read(srcIdType[:])
-	header.SourceIdIndexVal = uint32(srcIdType[2]) | uint32(srcIdType[1]<<8) |
-		uint32(srcIdType[0]<<16)
+	var err error
 
-	binary.Read(r, binary.BigEndian, &header.CounterRecords)
-
-	sample := CounterSample{}
-	sample.Header = header
-
-	for i := uint32(0); i < header.CounterRecords; i++ {
-		cRH := CounterRecordHeader{}
-		binary.Read(r, binary.BigEndian, &cRH)
-
-		switch cRH.DataFormat {
-		case TypeEthernetCounter:
-			sample.Records = append(sample.Records, decodeEthernetRecord(r))
-		case TypeGenericIfaceCounter:
-			sample.Records = append(sample.Records, decodeGenericIfaceRecord(r))
-		case TypeTokenRingCounter:
-			sample.Records = append(sample.Records, decodeTokenRingRecord(r))
-		case TypeVgCounter:
-			sample.Records = append(sample.Records, decodeVgRecord(r))
-		case TypeVlanCounter:
-			sample.Records = append(sample.Records, decodeVlanRecord(r))
-		case TypeProcessorCounter:
-			sample.Records = append(sample.Records, decodeProcessorRecord(r))
-		case TypeHostCpuCounter:
-			sample.Records = append(sample.Records, decodeHostCpuRecord(r))
-		case TypeHostMemoryCounter:
-			sample.Records = append(sample.Records, decodeHostMemoryRecord(r))
-		case TypeHostDiskCounter:
-			sample.Records = append(sample.Records, decodeHostDiskRecord(r))
-		case TypeHostNetCounter:
-			sample.Records = append(sample.Records, decodeHostNetRecord(r))
-		case TypeApplicationCounter:
-			sample.Records = append(sample.Records, decodeApplicationCounters(r))
-		default:
-			r.Seek(int64(cRH.DataLength), 1)
-		}
+	err = binary.Read(r, binary.BigEndian, &s.SequenceNum)
+	if err != nil {
+		return nil, err
 	}
 
-	return sample
+	err = binary.Read(r, binary.BigEndian, &s.SourceIdType)
+	if err != nil {
+		return nil, err
+	}
+
+	var srcIdIndexVal [3]byte
+	n, err := r.Read(srcIdIndexVal[:])
+	if err != nil {
+		return nil, err
+	}
+
+	if n != 3 {
+		return nil, errors.New("sflow: counter sample decoding error")
+	}
+
+	s.SourceIdIndexVal = uint32(srcIdIndexVal[2]) | uint32(srcIdIndexVal[1]<<8) |
+		uint32(srcIdIndexVal[0]<<16)
+
+	err = binary.Read(r, binary.BigEndian, &s.NumRecords)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := uint32(0); i < s.NumRecords; i++ {
+		format, length := uint32(0), uint32(0)
+
+		err = binary.Read(r, binary.BigEndian, &format)
+		if err != nil {
+			return nil, err
+		}
+
+		err = binary.Read(r, binary.BigEndian, &length)
+		if err != nil {
+			return nil, err
+		}
+
+		var rec Record
+
+		switch format {
+		case TypeGenericInterfaceCountersRecord:
+			rec, err = decodeGenericInterfaceCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeEthernetCountersRecord:
+			rec, err = decodeEthernetCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeTokenRingCountersRecord:
+			rec, err = decodeTokenRingCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeVgCountersRecord:
+			rec, err = decodeVgCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeVlanCountersRecord:
+			rec, err = decodeVlanCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeProcessorCountersRecord:
+			rec, err = decodeProcessorCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeHostCpuCountersRecord:
+			rec, err = decodeHostCpuCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeHostMemoryCountersRecord:
+			rec, err = decodeHostMemoryCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeHostDiskCountersRecord:
+			rec, err = decodeHostDiskCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		case TypeHostNetCountersRecord:
+			rec, err = decodeHostNetCountersRecord(r)
+			if err != nil {
+				return nil, err
+			}
+
+		default:
+			_, err := r.Seek(int64(length), 1)
+			if err != nil {
+				return nil, err
+			}
+
+			continue
+		}
+
+		s.Records = append(s.Records, rec)
+	}
+
+	return s, nil
 }

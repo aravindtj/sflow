@@ -5,21 +5,21 @@ import (
 	"io"
 )
 
-type decoder struct {
+type Decoder struct {
 	reader io.ReadSeeker
 }
 
-func NewDecoder(r io.ReadSeeker) *decoder {
-	return &decoder{
+func NewDecoder(r io.ReadSeeker) *Decoder {
+	return &Decoder{
 		reader: r,
 	}
 }
 
-func (d *decoder) Use(r io.ReadSeeker) {
+func (d *Decoder) Use(r io.ReadSeeker) {
 	d.reader = r
 }
 
-func (d *decoder) Decode() (*Datagram, error) {
+func (d *Decoder) Decode() (*Datagram, error) {
 	// Decode headers first
 	dgram := &Datagram{}
 	var err error
@@ -65,6 +65,15 @@ func (d *decoder) Decode() (*Datagram, error) {
 	err = binary.Read(d.reader, binary.BigEndian, &dgram.NumSamples)
 	if err != nil {
 		return nil, err
+	}
+
+	for i := dgram.NumSamples; i > 0; i-- {
+		sample, err := decodeSample(d.reader)
+		if err != nil {
+			return nil, err
+		}
+
+		dgram.Samples = append(dgram.Samples, sample)
 	}
 
 	return dgram, nil
